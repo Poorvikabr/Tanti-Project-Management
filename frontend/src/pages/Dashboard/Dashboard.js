@@ -133,19 +133,19 @@ export const Dashboard = () => {
           return (
             <Card
               key={index}
-              className="cursor-pointer hover:shadow-lg transition-all duration-300 overflow-hidden group"
+              className="cursor-pointer hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-200"
               onClick={() => navigate('/projects')}
               data-testid={`kpi-card-${kpi.title.toLowerCase().replace(/ /g, '-')}`}
             >
-              <div className={`h-2 bg-gradient-to-r ${kpi.color}`}></div>
+              <div className={`h-2 bg-gradient-to-r ${kpi.gradient}`}></div>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-slate-600">{kpi.title}</p>
-                    <p className="text-3xl font-bold mt-2">{kpi.value}</p>
+                    <p className="text-4xl font-bold mt-2 text-slate-900">{kpi.value}</p>
                   </div>
-                  <div className={`p-3 rounded-xl bg-gradient-to-br ${kpi.color} group-hover:scale-110 transition-transform`}>
-                    <Icon className="w-6 h-6 text-white" />
+                  <div className={`p-4 rounded-xl ${kpi.bg}`}>
+                    <Icon className="w-7 h-7 text-white" />
                   </div>
                 </div>
               </CardContent>
