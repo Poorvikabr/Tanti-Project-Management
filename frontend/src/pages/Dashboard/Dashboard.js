@@ -155,21 +155,21 @@ export const Dashboard = () => {
       </div>
 
       {/* Charts Row - Status Breakdown & Region */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Project Status Breakdown - Horizontal Bars */}
         <Card className="border border-slate-200" data-testid="status-breakdown-card">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Project Status Breakdown</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-bold">Project Status Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-5">
+            <div className="space-y-3" style={{ height: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
               {statusBreakdown.map((status, index) => (
-                <div key={index} className="space-y-2">
+                <div key={index} className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-base font-medium text-slate-700">{status.name}</span>
-                    <span className="text-base font-semibold text-slate-900">{status.count} ({status.percentage}%)</span>
+                    <span className="text-sm font-medium text-slate-700">{status.name}</span>
+                    <span className="text-sm font-semibold text-slate-900">{status.count} ({status.percentage}%)</span>
                   </div>
-                  <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                  <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                     <div 
                       className={`h-full ${status.color} rounded-full transition-all duration-500`}
                       style={{ width: `${status.percentage}%` }}
@@ -183,18 +183,18 @@ export const Dashboard = () => {
 
         {/* Projects by Region - Percentage Cards */}
         <Card className="border border-slate-200" data-testid="region-card">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Projects by Region</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-bold">Projects by Region</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
+            <div className="space-y-3" style={{ height: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
               {regionData.map((region, index) => (
-                <div key={index} className="flex items-center justify-between p-5 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
                   <div>
-                    <p className="text-xl font-bold text-slate-900 mb-1">{region.name}</p>
-                    <p className="text-sm text-slate-600">{region.count} projects</p>
+                    <p className="text-base font-bold text-slate-900 mb-0.5">{region.name}</p>
+                    <p className="text-xs text-slate-600">{region.count} projects</p>
                   </div>
-                  <div className="text-5xl font-bold text-blue-600">{region.percentage}%</div>
+                  <div className="text-4xl font-bold text-blue-600">{region.percentage}%</div>
                 </div>
               ))}
             </div>
