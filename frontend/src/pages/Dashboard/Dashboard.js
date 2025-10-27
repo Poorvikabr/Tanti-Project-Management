@@ -127,7 +127,7 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6" data-testid="dashboard-page">
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((kpi, index) => {
           const Icon = kpi.icon;
           return (
@@ -138,14 +138,14 @@ export const Dashboard = () => {
               data-testid={`kpi-card-${kpi.title.toLowerCase().replace(/ /g, '-')}`}
             >
               <div className={`h-2 bg-gradient-to-r ${kpi.gradient}`}></div>
-              <CardContent className="pt-6">
+              <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-600">{kpi.title}</p>
-                    <p className="text-4xl font-bold mt-2 text-slate-900">{kpi.value}</p>
+                    <p className="text-xs font-medium text-slate-600">{kpi.title}</p>
+                    <p className="text-3xl font-bold mt-1 text-slate-900">{kpi.value}</p>
                   </div>
-                  <div className={`p-4 rounded-xl ${kpi.bg}`}>
-                    <Icon className="w-7 h-7 text-white" />
+                  <div className={`p-3 rounded-xl ${kpi.bg}`}>
+                    <Icon className="w-6 h-6 text-white" />
                   </div>
                 </div>
               </CardContent>
