@@ -205,139 +205,90 @@ export const Dashboard = () => {
       {/* Bottom Row - Financial Summary, Quick Actions & Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Financial Summary */}
-        <Card className="border border-slate-200" data-testid="financial-summary-card">
+        <Card data-testid="financial-summary-card">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl font-bold">
+            <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-green-600" />
               Financial Summary
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Total Project Value</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  ₹{projects.reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </p>
+              <div className="flex justify-between items-center p-4 bg-slate-50 rounded-lg">
+                <span className="text-slate-600">Total Project Value</span>
+                <span className="text-xl font-bold">\u20b9{projects.reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString()}</span>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Active Value</p>
-                <p className="text-2xl font-bold text-green-600">
-                  ₹{projects.filter(p => p.status === 'Active').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </p>
+              <div className="flex justify-between items-center p-4 bg-slate-50 rounded-lg">
+                <span className="text-slate-600">Active Value</span>
+                <span className="text-xl font-bold text-green-600">
+                  \u20b9{projects.filter(p => p.status === 'Active').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString()}
+                </span>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Completed Value</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  ₹{projects.filter(p => p.status === 'Completed').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </p>
+              <div className="flex justify-between items-center p-4 bg-slate-50 rounded-lg">
+                <span className="text-slate-600">Completed Value</span>
+                <span className="text-xl font-bold text-blue-600">
+                  \u20b9{projects.filter(p => p.status === 'Completed').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString()}
+                </span>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <Card className="border border-slate-200" data-testid="quick-actions-card">
+        {/* Quick Links */}
+        <Card data-testid="quick-links-card">
           <CardHeader>
-            <CardTitle className="text-xl font-bold">Quick Actions</CardTitle>
+            <CardTitle>Quick Links</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {quickActions.map((action, index) => {
-                const Icon = action.icon;
+            <div className="grid grid-cols-2 gap-4">
+              {quickLinks.map((link, index) => {
+                const Icon = link.icon;
                 return (
                   <Button
                     key={index}
                     variant="outline"
-                    className="w-full h-auto py-4 px-5 flex items-center justify-start gap-4 hover:bg-slate-50 hover:border-slate-300 transition-all text-left"
-                    onClick={() => navigate(action.path)}
-                    data-testid={`quick-action-${action.label.toLowerCase().replace(/ /g, '-')}`}
+                    className="h-24 flex flex-col items-center justify-center gap-2 hover:bg-cyan-50 hover:border-cyan-500 hover:text-cyan-700 transition-all"
+                    onClick={() => navigate(link.path)}
+                    data-testid={`quick-link-${link.label.toLowerCase().replace(/ /g, '-')}`}
                   >
-                    <Icon className="w-5 h-5 text-slate-600" />
-                    <span className="text-base font-medium text-slate-900 flex-1">{action.label}</span>
+                    <Icon className="w-6 h-6" />
+                    <span className="text-sm font-medium">{link.label}</span>
                   </Button>
                 );
               })}
             </div>
           </CardContent>
         </Card>
-
-        {/* Recent Activity */}
-        <Card className="border border-slate-200" data-testid="activity-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-xl font-bold">Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700" onClick={() => navigate('/projects')}>
-              View All <ArrowRight className="w-4 h-4 ml-1" />
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {activityLogs.length > 0 ? (
-              <div className="space-y-4">
-                {activityLogs.slice(0, 5).map((log, index) => (
-                  <div
-                    key={log.id}
-                    className="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
-                    onClick={() => log.project_id && navigate(`/projects/${log.project_id}`)}
-                    data-testid={`activity-log-${index}`}
-                  >
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-blue-600 text-white text-sm font-semibold">
-                        {getInitials(user?.name || 'Admin User')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">
-                        {user?.name || 'Admin User'} <span className="font-normal text-slate-600">{log.action.toLowerCase()}</span>
-                      </p>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {new Date(log.created_at).toLocaleString('en-IN', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-slate-500" data-testid="no-activity-msg">
-                <p className="text-sm">No recent activity</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Quick Links Row */}
-      <Card className="border border-slate-200" data-testid="quick-links-card">
+      {/* Recent Activity Feed */}
+      <Card data-testid="activity-feed-card">
         <CardHeader>
-          <CardTitle className="text-xl font-bold">Quick Links</CardTitle>
+          <CardTitle>Recent Activity</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Create Project', icon: FolderKanban, path: '/projects/new' },
-              { label: 'Reports', icon: FileText, path: '/reports' },
-              { label: 'Upload Invoice', icon: Upload, path: '/documents' },
-              { label: 'Manage Templates', icon: Settings, path: '/admin' }
-            ].map((link, index) => {
-              const Icon = link.icon;
-              return (
-                <Button
-                  key={index}
-                  variant="outline"
-                  className="h-28 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all"
-                  onClick={() => navigate(link.path)}
-                  data-testid={`quick-link-${link.label.toLowerCase().replace(/ /g, '-')}`}
+          {activityLogs.length > 0 ? (
+            <div className="space-y-3">
+              {activityLogs.slice(0, 10).map((log, index) => (
+                <div
+                  key={log.id}
+                  className="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
+                  onClick={() => log.project_id && navigate(`/projects/${log.project_id}`)}
+                  data-testid={`activity-log-${index}`}
                 >
-                  <Icon className="w-8 h-8 text-slate-600" />
-                  <span className="text-sm font-medium text-slate-900">{link.label}</span>
-                </Button>
-              );
-            })}
-          </div>
+                  <div className="w-2 h-2 rounded-full bg-cyan-500 mt-2"></div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{log.action}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {new Date(log.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500" data-testid="no-activity-msg">No recent activity</div>
+          )}
         </CardContent>
       </Card>
     </div>
