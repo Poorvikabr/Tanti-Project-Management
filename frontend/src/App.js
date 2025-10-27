@@ -7,6 +7,11 @@ import { Login } from '@/pages/Auth/Login';
 import { Register } from '@/pages/Auth/Register';
 import { Dashboard } from '@/pages/Dashboard/Dashboard';
 import { Projects } from '@/pages/Projects/Projects';
+import { CreateProject } from '@/pages/Projects/CreateProject';
+import { ProjectWorkspace } from '@/pages/Projects/ProjectWorkspace';
+import { Milestones } from '@/pages/Milestones/Milestones';
+import { Issues } from '@/pages/Issues/Issues';
+import { Documents } from '@/pages/Documents/Documents';
 import '@/App.css';
 
 const PrivateRoute = ({ children }) => {
