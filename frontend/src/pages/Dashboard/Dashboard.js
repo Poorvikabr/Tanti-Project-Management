@@ -52,29 +52,29 @@ export const Dashboard = () => {
       title: 'Total Projects',
       value: stats?.kpi?.total_projects || 0,
       icon: FolderKanban,
-      color: 'from-blue-500 to-blue-600',
-      filter: 'all'
+      gradient: 'from-blue-500 to-blue-600',
+      bg: 'bg-blue-600'
     },
     {
       title: 'Active Projects',
       value: stats?.kpi?.active_projects || 0,
       icon: Clock,
-      color: 'from-green-500 to-green-600',
-      filter: 'active'
+      gradient: 'from-green-500 to-green-600',
+      bg: 'bg-green-600'
     },
     {
       title: 'Completed Projects',
       value: stats?.kpi?.completed_projects || 0,
       icon: CheckCircle2,
-      color: 'from-cyan-500 to-cyan-600',
-      filter: 'completed'
+      gradient: 'from-cyan-500 to-cyan-600',
+      bg: 'bg-cyan-600'
     },
     {
       title: 'At-Risk Projects',
       value: stats?.kpi?.at_risk_projects || 0,
       icon: AlertTriangle,
-      color: 'from-red-500 to-red-600',
-      filter: 'at-risk'
+      gradient: 'from-red-500 to-red-600',
+      bg: 'bg-red-600'
     }
   ];
 
