@@ -23,7 +23,7 @@ export const MainLayout = ({ children }) => {
       <TopBar />
       
       {/* Main Content Area */}
-      <div className="ml-64 mt-16 p-6">
+      <div className="ml-64 mt-16 p-4">
         {/* Breadcrumb */}
         {breadcrumbs.length > 0 && (
           <div className="mb-4 flex items-center gap-2 text-sm text-slate-600" data-testid="breadcrumb">
