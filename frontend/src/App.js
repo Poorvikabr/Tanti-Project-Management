@@ -85,14 +85,21 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/projects/new"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <CreateProject />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/projects/:id"
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Project Workspace</h2>
-                <p className="text-slate-600 mt-2">Full project workspace with tabs coming soon...</p>
-              </div>
+              <ProjectWorkspace />
             </MainLayout>
           </PrivateRoute>
         }
@@ -102,10 +109,7 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Milestones</h2>
-                <p className="text-slate-600 mt-2">Gantt chart view coming soon...</p>
-              </div>
+              <Milestones />
             </MainLayout>
           </PrivateRoute>
         }
@@ -154,10 +158,7 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Issues & SLA</h2>
-                <p className="text-slate-600 mt-2">Issues tracking coming soon...</p>
-              </div>
+              <Issues />
             </MainLayout>
           </PrivateRoute>
         }
@@ -180,10 +181,7 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Documents</h2>
-                <p className="text-slate-600 mt-2">Document management coming soon...</p>
-              </div>
+              <Documents />
             </MainLayout>
           </PrivateRoute>
         }
