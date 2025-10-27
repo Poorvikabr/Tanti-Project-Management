@@ -162,7 +162,7 @@ export const Dashboard = () => {
             <CardTitle className="text-lg font-bold">Project Status Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3" style={{ height: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
+            <div className="space-y-3" style={{ height: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
               {statusBreakdown.map((status, index) => (
                 <div key={index} className="space-y-1">
                   <div className="flex items-center justify-between">
@@ -187,7 +187,7 @@ export const Dashboard = () => {
             <CardTitle className="text-lg font-bold">Projects by Region</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3" style={{ height: '220px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
+            <div className="space-y-3" style={{ height: '200px', display: 'flex', flexDirection: 'column', justifyContent: 'space-around' }}>
               {regionData.map((region, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
                   <div>
