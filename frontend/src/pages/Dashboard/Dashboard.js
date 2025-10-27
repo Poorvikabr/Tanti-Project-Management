@@ -312,11 +312,11 @@ export const Dashboard = () => {
 
       {/* Quick Links Row */}
       <Card className="border border-slate-200" data-testid="quick-links-card">
-        <CardHeader>
-          <CardTitle className="text-xl font-bold">Quick Links</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg font-bold">Quick Links</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { label: 'Create Project', icon: FolderKanban, path: '/projects/new' },
               { label: 'Reports', icon: FileText, path: '/reports' },
@@ -328,12 +328,12 @@ export const Dashboard = () => {
                 <Button
                   key={index}
                   variant="outline"
-                  className="h-28 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                  className="h-20 flex flex-col items-center justify-center gap-2 hover:bg-slate-50 hover:border-slate-300 transition-all"
                   onClick={() => navigate(link.path)}
                   data-testid={`quick-link-${link.label.toLowerCase().replace(/ /g, '-')}`}
                 >
-                  <Icon className="w-8 h-8 text-slate-600" />
-                  <span className="text-sm font-medium text-slate-900">{link.label}</span>
+                  <Icon className="w-6 h-6 text-slate-600" />
+                  <span className="text-xs font-medium text-slate-900">{link.label}</span>
                 </Button>
               );
             })}
