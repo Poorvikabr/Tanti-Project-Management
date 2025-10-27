@@ -202,33 +202,33 @@ export const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Bottom Row - Financial Summary, Quick Actions & Recent Activity */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Bottom Row - Financial Summary, Quick Links & Recent Activity */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Financial Summary */}
         <Card className="border border-slate-200" data-testid="financial-summary-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl font-bold">
-              <TrendingUp className="w-5 h-5 text-green-600" />
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg font-bold">
+              <TrendingUp className="w-4 h-4 text-green-600" />
               Financial Summary
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Total Project Value</p>
-                <p className="text-2xl font-bold text-slate-900">
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-600">Total Project Value</p>
+                <p className="text-xl font-bold text-slate-900">
                   ₹{projects.reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </p>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Active Value</p>
-                <p className="text-2xl font-bold text-green-600">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-600">Active Value</p>
+                <p className="text-xl font-bold text-green-600">
                   ₹{projects.filter(p => p.status === 'Active').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </p>
               </div>
-              <div className="space-y-2">
-                <p className="text-sm text-slate-600">Completed Value</p>
-                <p className="text-2xl font-bold text-blue-600">
+              <div className="space-y-1">
+                <p className="text-xs text-slate-600">Completed Value</p>
+                <p className="text-xl font-bold text-blue-600">
                   ₹{projects.filter(p => p.status === 'Completed').reduce((sum, p) => sum + (p.value || 0), 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </p>
               </div>
@@ -238,23 +238,23 @@ export const Dashboard = () => {
 
         {/* Quick Actions */}
         <Card className="border border-slate-200" data-testid="quick-actions-card">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold">Quick Actions</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg font-bold">Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-2">
               {quickActions.map((action, index) => {
                 const Icon = action.icon;
                 return (
                   <Button
                     key={index}
                     variant="outline"
-                    className="w-full h-auto py-4 px-5 flex items-center justify-start gap-4 hover:bg-slate-50 hover:border-slate-300 transition-all text-left"
+                    className="w-full h-auto py-3 px-4 flex items-center justify-start gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all text-left"
                     onClick={() => navigate(action.path)}
                     data-testid={`quick-action-${action.label.toLowerCase().replace(/ /g, '-')}`}
                   >
-                    <Icon className="w-5 h-5 text-slate-600" />
-                    <span className="text-base font-medium text-slate-900 flex-1">{action.label}</span>
+                    <Icon className="w-4 h-4 text-slate-600" />
+                    <span className="text-sm font-medium text-slate-900 flex-1">{action.label}</span>
                   </Button>
                 );
               })}
@@ -264,32 +264,32 @@ export const Dashboard = () => {
 
         {/* Recent Activity */}
         <Card className="border border-slate-200" data-testid="activity-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-4">
-            <CardTitle className="text-xl font-bold">Recent Activity</CardTitle>
-            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700" onClick={() => navigate('/projects')}>
-              View All <ArrowRight className="w-4 h-4 ml-1" />
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-lg font-bold">Recent Activity</CardTitle>
+            <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 h-auto py-1 px-2" onClick={() => navigate('/projects')}>
+              <span className="text-xs">View All</span> <ArrowRight className="w-3 h-3 ml-1" />
             </Button>
           </CardHeader>
           <CardContent>
             {activityLogs.length > 0 ? (
-              <div className="space-y-4">
-                {activityLogs.slice(0, 5).map((log, index) => (
+              <div className="space-y-2">
+                {activityLogs.slice(0, 4).map((log, index) => (
                   <div
                     key={log.id}
-                    className="flex items-start gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
+                    className="flex items-start gap-2 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors"
                     onClick={() => log.project_id && navigate(`/projects/${log.project_id}`)}
                     data-testid={`activity-log-${index}`}
                   >
-                    <Avatar className="w-10 h-10">
-                      <AvatarFallback className="bg-blue-600 text-white text-sm font-semibold">
+                    <Avatar className="w-8 h-8">
+                      <AvatarFallback className="bg-blue-600 text-white text-xs font-semibold">
                         {getInitials(user?.name || 'Admin User')}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">
+                      <p className="text-xs font-medium text-slate-900">
                         {user?.name || 'Admin User'} <span className="font-normal text-slate-600">{log.action.toLowerCase()}</span>
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-[10px] text-slate-500 mt-0.5">
                         {new Date(log.created_at).toLocaleString('en-IN', { 
                           month: 'short', 
                           day: 'numeric', 
@@ -302,8 +302,8 @@ export const Dashboard = () => {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-slate-500" data-testid="no-activity-msg">
-                <p className="text-sm">No recent activity</p>
+              <div className="text-center py-6 text-slate-500" data-testid="no-activity-msg">
+                <p className="text-xs">No recent activity</p>
               </div>
             )}
           </CardContent>
