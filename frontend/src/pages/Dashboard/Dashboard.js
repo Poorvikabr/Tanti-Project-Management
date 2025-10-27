@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/utils/api';
+import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { FolderKanban, CheckCircle2, AlertTriangle, Clock, TrendingUp, FileText, Upload, Settings } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { FolderKanban, CheckCircle2, AlertTriangle, Clock, TrendingUp, FileText, Upload, Settings, ArrowRight, FolderOpen, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const Dashboard = () => {
