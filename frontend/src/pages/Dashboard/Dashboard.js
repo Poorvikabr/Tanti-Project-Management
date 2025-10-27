@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 export const Dashboard = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [projects, setProjects] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
