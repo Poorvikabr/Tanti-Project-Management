@@ -154,59 +154,50 @@ export const Dashboard = () => {
         })}
       </div>
 
-      {/* Charts Row */}
+      {/* Charts Row - Status Breakdown & Region */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Project Status Donut Chart */}
-        <Card data-testid="status-chart-card">
+        {/* Project Status Breakdown - Horizontal Bars */}
+        <Card className="border border-slate-200" data-testid="status-breakdown-card">
           <CardHeader>
-            <CardTitle>Project Status Distribution</CardTitle>
+            <CardTitle className="text-xl font-bold">Project Status Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            {statusData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={statusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label
-                  >
-                    {statusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-72 flex items-center justify-center text-slate-500">No data available</div>
-            )}
+            <div className="space-y-5">
+              {statusBreakdown.map((status, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-base font-medium text-slate-700">{status.name}</span>
+                    <span className="text-base font-semibold text-slate-900">{status.count} ({status.percentage}%)</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                    <div 
+                      className={`h-full ${status.color} rounded-full transition-all duration-500`}
+                      style={{ width: `${status.percentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
 
-        {/* Region Bar Chart */}
-        <Card data-testid="region-chart-card">
+        {/* Projects by Region - Percentage Cards */}
+        <Card className="border border-slate-200" data-testid="region-card">
           <CardHeader>
-            <CardTitle>Projects by Region</CardTitle>
+            <CardTitle className="text-xl font-bold">Projects by Region</CardTitle>
           </CardHeader>
           <CardContent>
-            {regionData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={regionData}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#06b6d4" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-72 flex items-center justify-center text-slate-500">No data available</div>
-            )}
+            <div className="space-y-6">
+              {regionData.map((region, index) => (
+                <div key={index} className="flex items-center justify-between p-5 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                  <div>
+                    <p className="text-xl font-bold text-slate-900 mb-1">{region.name}</p>
+                    <p className="text-sm text-slate-600">{region.count} projects</p>
+                  </div>
+                  <div className="text-5xl font-bold text-blue-600">{region.percentage}%</div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
