@@ -78,25 +78,51 @@ export const Dashboard = () => {
     }
   ];
 
-  // Prepare chart data
-  const statusData = Object.entries(stats?.projects_by_status || {}).map(([name, value]) => ({
-    name,
-    value
-  }));
-
-  const regionData = Object.entries(stats?.projects_by_region || {}).map(([name, value]) => ({
-    name,
-    value
-  }));
-
-  const COLORS = ['#0ea5e9', '#06b6d4', '#14b8a6', '#10b981', '#84cc16', '#eab308'];
-
-  const quickLinks = [
-    { label: 'Create Project', icon: FolderKanban, path: '/projects/new' },
-    { label: 'Reports', icon: FileText, path: '/reports' },
-    { label: 'Upload Invoice', icon: Upload, path: '/documents' },
-    { label: 'Manage Templates', icon: Settings, path: '/admin' }
+  // Prepare status breakdown data with percentages
+  const totalProjects = stats?.kpi?.total_projects || 1;
+  const statusBreakdown = [
+    { 
+      name: 'Active', 
+      count: stats?.kpi?.active_projects || 0, 
+      percentage: Math.round(((stats?.kpi?.active_projects || 0) / totalProjects) * 100),
+      color: 'bg-green-500'
+    },
+    { 
+      name: 'Completed', 
+      count: stats?.kpi?.completed_projects || 0, 
+      percentage: Math.round(((stats?.kpi?.completed_projects || 0) / totalProjects) * 100),
+      color: 'bg-blue-500'
+    },
+    { 
+      name: 'At-Risk', 
+      count: stats?.kpi?.at_risk_projects || 0, 
+      percentage: Math.round(((stats?.kpi?.at_risk_projects || 0) / totalProjects) * 100),
+      color: 'bg-red-500'
+    },
+    { 
+      name: 'On Hold', 
+      count: projects.filter(p => p.status === 'On-Hold').length, 
+      percentage: Math.round((projects.filter(p => p.status === 'On-Hold').length / totalProjects) * 100),
+      color: 'bg-yellow-500'
+    }
   ];
+
+  // Calculate region percentages
+  const regionData = Object.entries(stats?.projects_by_region || {}).map(([name, count]) => ({
+    name,
+    count,
+    percentage: Math.round((count / totalProjects) * 100)
+  }));
+
+  const quickActions = [
+    { label: 'Create Project', icon: FolderKanban, path: '/projects/new' },
+    { label: 'View All Projects', icon: FolderOpen, path: '/projects' },
+    { label: 'Generate Report', icon: BarChart3, path: '/reports' }
+  ];
+
+  const getInitials = (name) => {
+    return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
+  };
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
