@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/utils/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,9 +12,11 @@ import { toast } from 'sonner';
 
 export const Projects = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState({
     region: 'all',
@@ -26,8 +28,23 @@ export const Projects = () => {
     fetchProjects();
   }, []);
 
+  // Apply initial status filter from query param (e.g., /projects?status=Active)
   useEffect(() => {
-    applyFilters();
+    const params = new URLSearchParams(location.search);
+    const qStatus = params.get('status');
+    if (qStatus) {
+      setFilters((f) => ({ ...f, status: qStatus }));
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    setIsFiltering(true);
+    // Small delay to allow UI to render a filtering state
+    const id = setTimeout(() => {
+      applyFilters();
+      setIsFiltering(false);
+    }, 50);
+    return () => clearTimeout(id);
   }, [projects, searchQuery, filters]);
 
   const fetchProjects = async () => {
@@ -41,6 +58,8 @@ export const Projects = () => {
       setLoading(false);
     }
   };
+
+  const normalizeStatus = (s) => (s || '').toLowerCase().replace(/-/g, ' ').trim();
 
   const applyFilters = () => {
     let filtered = [...projects];
@@ -58,9 +77,9 @@ export const Projects = () => {
       filtered = filtered.filter(p => p.region === filters.region);
     }
 
-    // Status filter
+    // Status filter (case-insensitive, normalize hyphens/spaces)
     if (filters.status !== 'all') {
-      filtered = filtered.filter(p => p.status === filters.status);
+      filtered = filtered.filter(p => normalizeStatus(p.status) === normalizeStatus(filters.status));
     }
 
     // Type filter
@@ -72,14 +91,15 @@ export const Projects = () => {
   };
 
   const getStatusColor = (status) => {
-    const colors = {
-      'Planning': 'bg-gray-100 text-gray-700',
-      'Active': 'bg-green-100 text-green-700',
-      'On-Hold': 'bg-yellow-100 text-yellow-700',
-      'Completed': 'bg-blue-100 text-blue-700',
-      'At-Risk': 'bg-red-100 text-red-700'
+    const key = normalizeStatus(status);
+    const map = {
+      'planning': 'bg-gray-100 text-gray-700',
+      'active': 'bg-green-100 text-green-700',
+      'on hold': 'bg-yellow-100 text-yellow-700',
+      'completed': 'bg-blue-100 text-blue-700',
+      'at risk': 'bg-red-100 text-red-700'
     };
-    return colors[status] || 'bg-gray-100 text-gray-700';
+    return map[key] || 'bg-gray-100 text-gray-700';
   };
 
   const getDaysRemaining = (endDate) => {
@@ -90,7 +110,7 @@ export const Projects = () => {
     return diffDays;
   };
 
-  if (loading) {
+  if (loading || isFiltering) {
     return (
       <div className="flex items-center justify-center h-96" data-testid="projects-loading">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-600"></div>
@@ -150,7 +170,7 @@ export const Projects = () => {
                 <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="Planning">Planning</SelectItem>
                 <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="On-Hold">On-Hold</SelectItem>
+                <SelectItem value="On Hold">On Hold</SelectItem>
                 <SelectItem value="Completed">Completed</SelectItem>
                 <SelectItem value="At-Risk">At-Risk</SelectItem>
               </SelectContent>

@@ -30,7 +30,12 @@ export const Register = () => {
       toast.success('Registration successful!');
       navigate('/dashboard');
     } else {
-      toast.error(result.error || 'Registration failed');
+      const msg = result.error || 'Registration failed';
+      toast.error(msg);
+      if (msg.toLowerCase().includes('exists') || msg.toLowerCase().includes('already')) {
+        // Redirect to sign-in if account already exists
+        setTimeout(() => navigate('/login'), 800);
+      }
     }
 
     setLoading(false);

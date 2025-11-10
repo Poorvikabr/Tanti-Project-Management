@@ -15,6 +15,7 @@ export const Dashboard = () => {
   const [projects, setProjects] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [pendingTasks, setPendingTasks] = useState([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -22,18 +23,58 @@ export const Dashboard = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const [statsRes, projectsRes, logsRes] = await Promise.all([
-        api.getDashboardStats(),
-        api.getProjects(),
-        api.getActivityLogs()
+      const safe = (promise) => promise.then(r => ({ ok: true, data: r.data })).catch(() => ({ ok: false, data: null }));
+      const [summaryRes, projectsRes, logsRes, notifRes] = await Promise.all([
+        safe(api.getDashboardStats()),
+        safe(api.getProjects()),
+        safe(api.getActivityLogs()),
+        safe(api.getNotifications())
       ]);
-      
-      setStats(statsRes.data);
-      setProjects(projectsRes.data);
-      setActivityLogs(logsRes.data);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-      toast.error('Failed to load dashboard data');
+
+      const projectsData = projectsRes.data || [];
+      setProjects(projectsData);
+
+      // Prefer backend summary; if missing, derive from projects
+      const summary = summaryRes.data || {};
+      const derivedIfNeeded = (key, fallback) => (summary[key] != null ? summary[key] : fallback);
+
+      // Normalize region names and ensure known regions are present
+      const normalizeRegion = (name) => {
+        const raw = (name || 'Unknown').toString().trim().toLowerCase();
+        const key = raw.replace(/[^a-z]/g, '');
+        const map = {
+          bengaluru: 'Bengaluru',
+          bangalore: 'Bengaluru',
+          mysore: 'Mysore',
+          northkarnataka: 'North Karnataka',
+          northkaranataka: 'North Karnataka',
+          north: 'North Karnataka'
+        };
+        return map[key] || (name || 'Unknown');
+      };
+
+      const knownRegions = ['Bengaluru', 'Mysore', 'North Karnataka'];
+
+      const projectsByRegion = summary.projects_by_region || projectsData.reduce((acc, p) => {
+        const r = normalizeRegion(p.region);
+        acc[r] = (acc[r] || 0) + 1;
+        return acc;
+      }, {});
+
+      // Ensure known regions appear even if zero
+      knownRegions.forEach(r => { if (projectsByRegion[r] == null) projectsByRegion[r] = 0; });
+      setStats({
+        kpi: {
+          total_projects: derivedIfNeeded('total_projects', projectsData.length),
+          active_projects: derivedIfNeeded('active_projects', projectsData.filter(p => p.status === 'Active').length),
+          completed_projects: derivedIfNeeded('completed_projects', projectsData.filter(p => p.status === 'Completed').length),
+          at_risk_projects: derivedIfNeeded('at_risk_projects', projectsData.filter(p => p.status === 'At-Risk').length)
+        },
+        projects_by_region: projectsByRegion,
+        projects_by_status: {}
+      });
+      setActivityLogs(logsRes.data || []);
+      setPendingTasks(((notifRes.data || [])).filter(n => !n.read));
     } finally {
       setLoading(false);
     }
@@ -53,28 +94,32 @@ export const Dashboard = () => {
       value: stats?.kpi?.total_projects || 0,
       icon: FolderKanban,
       gradient: 'from-blue-500 to-blue-600',
-      bg: 'bg-blue-600'
+      bg: 'bg-blue-600',
+      target: '/projects'
     },
     {
       title: 'Active Projects',
       value: stats?.kpi?.active_projects || 0,
       icon: Clock,
       gradient: 'from-green-500 to-green-600',
-      bg: 'bg-green-600'
+      bg: 'bg-green-600',
+      target: '/projects?status=Active'
     },
     {
       title: 'Completed Projects',
       value: stats?.kpi?.completed_projects || 0,
       icon: CheckCircle2,
       gradient: 'from-cyan-500 to-cyan-600',
-      bg: 'bg-cyan-600'
+      bg: 'bg-cyan-600',
+      target: '/projects?status=Completed'
     },
     {
       title: 'At-Risk Projects',
       value: stats?.kpi?.at_risk_projects || 0,
       icon: AlertTriangle,
       gradient: 'from-red-500 to-red-600',
-      bg: 'bg-red-600'
+      bg: 'bg-red-600',
+      target: '/projects?status=At-Risk'
     }
   ];
 
@@ -108,11 +153,15 @@ export const Dashboard = () => {
   ];
 
   // Calculate region percentages
-  const regionData = Object.entries(stats?.projects_by_region || {}).map(([name, count]) => ({
-    name,
-    count,
-    percentage: Math.round((count / totalProjects) * 100)
-  }));
+  const regionOrder = ['Bengaluru', 'Mysore', 'North Karnataka'];
+  const regionMap = stats?.projects_by_region || {};
+  const regionData = regionOrder
+    .filter(name => name in regionMap)
+    .map((name) => ({
+      name,
+      count: regionMap[name] || 0,
+      percentage: Math.round(((regionMap[name] || 0) / totalProjects) * 100)
+    }));
 
   const quickActions = [
     { label: 'Create Project', icon: FolderKanban, path: '/projects/new' },
@@ -134,7 +183,7 @@ export const Dashboard = () => {
             <Card
               key={index}
               className="cursor-pointer hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-200"
-              onClick={() => navigate('/projects')}
+              onClick={() => navigate(kpi.target)}
               data-testid={`kpi-card-${kpi.title.toLowerCase().replace(/ /g, '-')}`}
             >
               <div className={`h-2 bg-gradient-to-r ${kpi.gradient}`}></div>
@@ -236,29 +285,35 @@ export const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <Card className="border border-slate-200" data-testid="quick-actions-card">
+        {/* My Pending Tasks */}
+        <Card className="border border-slate-200" data-testid="pending-tasks-card">
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg font-bold">Quick Actions</CardTitle>
+            <CardTitle className="text-lg font-bold">My Pending Tasks</CardTitle>
           </CardHeader>
           <CardContent>
+            {pendingTasks.length === 0 ? (
+              <div className="space-y-2">
+                {[ 
+                  { id: 'ex1', message: 'Share slab conduit layout for M1 (Tower A) — priority: High', created_at: new Date().toISOString() },
+                  { id: 'ex2', message: 'Prepare BOQ for light fixtures (M8 & M9) — due: Friday', created_at: new Date(Date.now()-3600*1000*5).toISOString() },
+                  { id: 'ex3', message: 'Schedule site walkthrough with client for handover checklist', created_at: new Date(Date.now()-3600*1000*24).toISOString() }
+                ].map(t => (
+                  <div key={t.id} className="p-3 border rounded-lg bg-white text-sm">
+                    {t.message}
+                    <div className="text-[10px] text-slate-500 mt-1">{new Date(t.created_at).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="space-y-2">
-              {quickActions.map((action, index) => {
-                const Icon = action.icon;
-                return (
-                  <Button
-                    key={index}
-                    variant="outline"
-                    className="w-full h-auto py-3 px-4 flex items-center justify-start gap-3 hover:bg-slate-50 hover:border-slate-300 transition-all text-left"
-                    onClick={() => navigate(action.path)}
-                    data-testid={`quick-action-${action.label.toLowerCase().replace(/ /g, '-')}`}
-                  >
-                    <Icon className="w-4 h-4 text-slate-600" />
-                    <span className="text-sm font-medium text-slate-900 flex-1">{action.label}</span>
-                  </Button>
-                );
-              })}
+                {pendingTasks.map(t => (
+                  <div key={t.id} className="p-3 border rounded-lg bg-white text-sm">
+                    {t.message}
+                    <div className="text-[10px] text-slate-500 mt-1">{new Date(t.created_at).toLocaleString()}</div>
+                  </div>
+                ))}
             </div>
+            )}
           </CardContent>
         </Card>
 

@@ -14,23 +14,61 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from 'sonner';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select';
 
 export const TopBar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    // Check if dark mode was previously set
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('darkMode') === 'true' || document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('darkMode', 'true');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('darkMode', 'false');
+    }
+  }, [darkMode]);
   const [notifications, setNotifications] = useState([]);
   const [region, setRegion] = useState('Bengaluru');
   const [searchQuery, setSearchQuery] = useState('');
+  const [taskOpen, setTaskOpen] = useState(false);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskAssigneeEmail, setTaskAssigneeEmail] = useState('');
+  const [taskProject, setTaskProject] = useState('');
+  const [taskPriority, setTaskPriority] = useState('Medium');
+  const [taskDueDate, setTaskDueDate] = useState('');
 
   useEffect(() => {
     fetchNotifications();
+    const id = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(id);
   }, []);
 
   const fetchNotifications = async () => {
     try {
       const response = await api.getNotifications();
-      setNotifications(response.data);
+      const fresh = response.data || [];
+      // Show popup toasts for unread notifications
+      fresh.filter(n => !n.read).forEach(n => {
+        toast.info(n.message, { duration: 4000 });
+      });
+      setNotifications(fresh);
+      // Mark as read after showing
+      if (fresh.some(n => !n.read)) {
+        await api.markNotificationsRead();
+        setNotifications(fresh.map(n => ({ ...n, read: true })));
+      }
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     }
@@ -42,6 +80,33 @@ export const TopBar = () => {
       setNotifications(notifications.map(n => ({ ...n, read: true })));
     } catch (error) {
       console.error('Failed to mark notifications as read:', error);
+    }
+  };
+
+  const submitTask = async () => {
+    try {
+      if (!taskAssigneeEmail || !taskTitle) {
+        toast.error('Provide assignee email and task title');
+        return;
+      }
+      const meta = [];
+      if (taskPriority) meta.push(`priority: ${taskPriority}`);
+      if (taskDueDate) meta.push(`due: ${taskDueDate}`);
+      const message = `${taskTitle}${taskDescription ? ' — ' + taskDescription : ''}${meta.length ? ' (' + meta.join(', ') + ')' : ''}`;
+      const link = taskProject || undefined;
+      await api.createTask({ assignee_email: taskAssigneeEmail, message, link });
+      toast.success('Task sent');
+      setTaskOpen(false);
+      setTaskTitle('');
+      setTaskDescription('');
+      setTaskAssigneeEmail('');
+      setTaskProject('');
+      setTaskPriority('Medium');
+      setTaskDueDate('');
+    } catch (e) {
+      const msg = e?.response?.data?.detail || 'Failed to send task';
+      console.error('Failed to create task', e);
+      toast.error(msg);
     }
   };
 
@@ -81,7 +146,7 @@ export const TopBar = () => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" data-testid="new-dropdown-menu">
               <DropdownMenuItem onClick={() => navigate('/projects/new')} data-testid="new-project-option">Create Project</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/milestones/new')} data-testid="new-task-option">Create Task</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTaskOpen(true)} data-testid="new-task-option">Task</DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/materials/new')} data-testid="new-material-request-option">Material Request</DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/issues/new')} data-testid="new-issue-option">Report Issue</DropdownMenuItem>
             </DropdownMenuContent>
@@ -172,13 +237,68 @@ export const TopBar = () => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" data-testid="user-menu">
-              <DropdownMenuItem onClick={() => navigate('/profile')} data-testid="user-profile-option">Profile</DropdownMenuItem>
+              <div className="px-2 py-1.5">
+                <p className="text-sm font-semibold">{user?.name || 'User'}</p>
+                <p className="text-xs text-slate-500">{user?.email || ''}</p>
+                <p className="text-xs text-slate-500">{user?.role || ''}</p>
+                {user?.region && <p className="text-xs text-slate-500 mt-1">Region: {user.region}</p>}
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout} data-testid="user-logout-option">Logout</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Task Dialog */}
+      <Dialog open={taskOpen} onOpenChange={setTaskOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Task</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Task Title</div>
+              <Input placeholder="Enter task title" value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} />
+            </div>
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Description</div>
+              <Input placeholder="Description" value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} />
+            </div>
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Assign To</div>
+              <Input placeholder="Assignee email" value={taskAssigneeEmail} onChange={(e) => setTaskAssigneeEmail(e.target.value)} />
+            </div>
+            <div>
+              <div className="text-sm text-slate-600 mb-1">Project (Optional)</div>
+              <Input placeholder="/projects/123 or full link" value={taskProject} onChange={(e) => setTaskProject(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm text-slate-600 mb-1">Priority</div>
+                <Select value={taskPriority} onValueChange={setTaskPriority}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Low">Low</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <div className="text-sm text-slate-600 mb-1">Due Date</div>
+                <Input type="date" value={taskDueDate} onChange={(e) => setTaskDueDate(e.target.value)} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setTaskOpen(false)}>Cancel</Button>
+              <Button onClick={submitTask}>Create Task</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -10,8 +10,13 @@ import { Projects } from '@/pages/Projects/Projects';
 import { CreateProject } from '@/pages/Projects/CreateProject';
 import { ProjectWorkspace } from '@/pages/Projects/ProjectWorkspace';
 import { Milestones } from '@/pages/Milestones/Milestones';
+import MilestonesGrid from '@/pages/Milestones/MilestonesGrid';
 import { Issues } from '@/pages/Issues/Issues';
+import DesignDeliverables from '@/pages/Design/DesignDeliverables';
+import Tasks from '@/pages/Tasks/Tasks';
 import { Documents } from '@/pages/Documents/Documents';
+import AdminTemplates from '@/pages/Admin/AdminTemplates';
+import Materials from '@/pages/Materials/Materials';
 import '@/App.css';
 
 const PrivateRoute = ({ children }) => {
@@ -109,20 +114,27 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
+              <MilestonesGrid />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/milestones/list"
+        element={
+          <PrivateRoute>
+            <MainLayout>
               <Milestones />
             </MainLayout>
           </PrivateRoute>
         }
       />
       <Route
-        path="/scope"
+        path="/tasks"
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Scope of Work</h2>
-                <p className="text-slate-600 mt-2">Excel-like grid coming soon...</p>
-              </div>
+              <Tasks />
             </MainLayout>
           </PrivateRoute>
         }
@@ -132,10 +144,17 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Design Deliverables</h2>
-                <p className="text-slate-600 mt-2">Kanban board coming soon...</p>
-              </div>
+              <DesignDeliverables />
+            </MainLayout>
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/design"
+        element={
+          <PrivateRoute>
+            <MainLayout>
+              <DesignDeliverables />
             </MainLayout>
           </PrivateRoute>
         }
@@ -145,10 +164,7 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Material Requests / POs</h2>
-                <p className="text-slate-600 mt-2">Materials management coming soon...</p>
-              </div>
+              <Materials />
             </MainLayout>
           </PrivateRoute>
         }
@@ -204,10 +220,7 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <MainLayout>
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold">Admin / Templates</h2>
-                <p className="text-slate-600 mt-2">Admin settings coming soon...</p>
-              </div>
+              <AdminTemplates />
             </MainLayout>
           </PrivateRoute>
         }

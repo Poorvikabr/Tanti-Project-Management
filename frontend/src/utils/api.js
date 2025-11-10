@@ -85,5 +85,10 @@ export const api = {
   },
 
   // Dashboard
-  getDashboardStats: () => axios.get(`${API_URL}/dashboard/stats`, { headers: getAuthHeader() })
+  getDashboardStats: () => axios.get(`${API_URL}/projects/summary`, { headers: getAuthHeader() }),
+
+  // Milestone Grid
+  getMilestonesGrid: () => axios.get(`${API_URL}/milestones/grid`, { headers: getAuthHeader() }),
+  createMilestonesGrid: (data) => axios.post(`${API_URL}/milestones/grid`, data, { headers: getAuthHeader() }),
+  updateMilestoneCell: (id, field, value) => axios.put(`${API_URL}/milestones/grid/${id}`, { field, value }, { headers: getAuthHeader() })
 };

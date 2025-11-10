@@ -10,32 +10,31 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, FileText, Upload, Download, FileBox } from 'lucide-react';
 import { toast } from 'sonner';
 
-export const Documents = () => {
+export const Documents = ({ projectId }) => {
   const [documents, setDocuments] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [formData, setFormData] = useState({
-    project_id: '',
+    project_id: projectId ? String(projectId) : '',
     type: 'Drawings'
   });
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [projectId]);
 
   const fetchData = async () => {
     try {
-      const [documentsRes, projectsRes] = await Promise.all([
-        api.getDocuments(),
-        api.getProjects()
-      ]);
-      setDocuments(documentsRes.data);
-      setProjects(projectsRes.data);
+      const projectsRes = await api.getProjects();
+      const documentsRes = await api.getDocuments(projectId);
+      setProjects(projectsRes.data || []);
+      setDocuments(documentsRes.data || []);
     } catch (error) {
       console.error('Failed to fetch data:', error);
-      toast.error('Failed to load documents');
+      setProjects([]);
+      setDocuments([]);
     } finally {
       setLoading(false);
     }

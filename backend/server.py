@@ -1,41 +1,29 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, File, UploadFile, Form
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-import os
-import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict, EmailStr
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
-import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 import bcrypt
 import jwt
-import boto3
-from botocore.exceptions import ClientError
+import logging
 
+from database import get_db, init_db, engine
+from sqlalchemy import text, func, or_
+from models import User, Project, Milestone as MilestoneModel, ScopeItem as ScopeItemModel, MilestoneGrid, Notification, ActivityLog, MaterialRequest, PurchaseOrder, Issue, DesignDeliverable
+from sqlalchemy.orm import Session
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Initialize database
+init_db()
 
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'your-super-secret-key-change-in-production')
+JWT_SECRET = "your-super-secret-key-change-in-production"
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 24
 
-# AWS S3 Configuration (will be set when user provides credentials)
-S3_BUCKET = os.environ.get('S3_BUCKET', '')
-AWS_ACCESS_KEY = os.environ.get('AWS_ACCESS_KEY_ID', '')
-AWS_SECRET_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY', '')
-AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
-
-# Create the main app without a prefix
+# Create the main app
 app = FastAPI(title="Tanti Projects API")
 
 # Create a router with the /api prefix
@@ -43,23 +31,25 @@ api_router = APIRouter(prefix="/api")
 
 security = HTTPBearer()
 
-# =========================
-# MODELS
-# =========================
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    email: EmailStr
-    name: str
-    role: str  # Admin, PM, Designer, Purchase, Finance, RegionHead
-    region: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    is_active: bool = True
+# Serve uploaded files (for downloads)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# =========================
+# PYDANTIC MODELS
+# =========================
 
 class UserCreate(BaseModel):
+    full_name: str
     email: EmailStr
-    name: str
     password: str
     role: str
     region: Optional[str] = None
@@ -68,22 +58,16 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
-class Project(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    client: str
-    region: str
-    value: float
-    progress: float = 0.0
-    status: str  # Planning, Active, On-Hold, Completed, At-Risk
-    type: str
-    start_date: datetime
-    end_date: datetime
-    days_remaining: Optional[int] = None
-    created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class UserResponse(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    role: str
+    region: Optional[str] = None
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
 
 class ProjectCreate(BaseModel):
     name: str
@@ -95,178 +79,110 @@ class ProjectCreate(BaseModel):
     start_date: datetime
     end_date: datetime
 
-class Milestone(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: str
+class ProjectResponse(BaseModel):
+    id: int
     name: str
-    start_date: datetime
-    end_date: datetime
-    status: str  # On-time, At-risk, Delayed, Completed
-    progress: float = 0.0
-    assignee: Optional[str] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class MilestoneCreate(BaseModel):
-    project_id: str
-    name: str
-    start_date: datetime
-    end_date: datetime
-    status: str = "On-time"
-    assignee: Optional[str] = None
-
-class ScopeItem(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: str
-    milestone_id: str
-    sl_no: int
-    description: str
-    type: str
+    client: str
+    region: str
+    value: float
+    progress: float
     status: str
-    progress: float = 0.0
-    remarks: Optional[str] = None
-    drawings_url: Optional[str] = None
-    bom_codes: Optional[str] = None
-    documents: Optional[str] = None
-    invoice: Optional[str] = None
-    stock: Optional[str] = None
-    po: Optional[str] = None
-    delivery_date: Optional[datetime] = None
-    collection: Optional[float] = None
-    amount: Optional[float] = None
-    last_edited_by: Optional[str] = None
-    last_edited_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class ScopeItemCreate(BaseModel):
-    project_id: str
-    milestone_id: str
-    sl_no: int
-    description: str
     type: str
-    status: str = "Pending"
+    start_date: datetime
+    end_date: datetime
+    days_remaining: Optional[int]
+    created_by: int
+    
+    class Config:
+        from_attributes = True
 
-class DesignDeliverable(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+class MilestoneGridResponse(BaseModel):
+    id: int
     project_id: str
-    milestone_id: str
-    title: str
-    status: str  # Pending, In-Review, Approved
-    assignee: Optional[str] = None
-    files: List[str] = []
-    comments: List[Dict[str, Any]] = []
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    project_name: str
+    branch: str
+    priority: str
+    sales_team: Optional[str]
+    immediate_action: Optional[str]
+    site_engineer: Optional[str]
+    ongoing_milestone: Optional[str]
+    upcoming_milestone: Optional[str]
+    owner: Optional[str]
+    progress_pct: float
+    status: str
+    
+    class Config:
+        from_attributes = True
 
-class DesignDeliverableCreate(BaseModel):
-    project_id: str
-    milestone_id: str
-    title: str
-    status: str = "Pending"
-    assignee: Optional[str] = None
-
-class MaterialRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    mr_number: str
-    project_id: str
-    items: List[Dict[str, Any]]
-    need_by: datetime
-    status: str  # Pending, Verified, Approved, PO-Created
-    created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class MaterialRequestCreate(BaseModel):
-    project_id: str
-    items: List[Dict[str, Any]]
-    need_by: datetime
-
-class PurchaseOrder(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    po_number: str
-    project_id: str
-    vendor: str
-    value: float
-    status: str  # Pending, Dispatched, Delivered
-    items: List[Dict[str, Any]]
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class PurchaseOrderCreate(BaseModel):
-    project_id: str
-    vendor: str
-    value: float
-    items: List[Dict[str, Any]]
-
-class Issue(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: str
-    title: str
-    description: str
-    severity: str  # Low, Med, High, Critical
-    status: str  # Open, In-Progress, Resolved, Escalated
-    assigned_to: Optional[str] = None
-    created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class IssueCreate(BaseModel):
-    project_id: str
-    title: str
-    description: str
-    severity: str = "Med"
-    assigned_to: Optional[str] = None
-
-class Timesheet(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: str
-    user_id: str
-    week_start: datetime
-    hours: Dict[str, float]  # {"Mon": 8, "Tue": 6, ...}
-    status: str  # Draft, Submitted, Approved
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class TimesheetCreate(BaseModel):
-    project_id: str
-    week_start: datetime
-    hours: Dict[str, float]
-
-class Document(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: str
-    type: str  # Drawings, Invoices, As-built, Handover
-    name: str
-    url: str
-    version: int = 1
-    uploaded_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class DocumentCreate(BaseModel):
-    project_id: str
-    type: str
-    name: str
-
-class Notification(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
+class TaskCreate(BaseModel):
+    assignee_id: Optional[int] = None
+    assignee_email: Optional[EmailStr] = None
     message: str
     link: Optional[str] = None
-    read: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-class ActivityLog(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    project_id: Optional[str] = None
-    user_id: str
-    action: str
-    details: Dict[str, Any]
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class MaterialRequestCreate(BaseModel):
+    title: str
+    items: Optional[str] = None
+    needed_by: Optional[datetime] = None
+    status: Optional[str] = "Pending"
+    assignee_email: Optional[EmailStr] = None
+
+class MaterialRequestResponse(BaseModel):
+    id: int
+    title: str
+    items: Optional[str]
+    needed_by: Optional[datetime]
+    status: str
+    assignee_email: Optional[str]
+    requested_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PurchaseOrderCreate(BaseModel):
+    title: str
+    vendor: Optional[str] = None
+    amount: Optional[float] = None
+    items: Optional[str] = None
+    status: Optional[str] = "Draft"
+
+class PurchaseOrderResponse(BaseModel):
+    id: int
+    title: str
+    vendor: Optional[str]
+    amount: Optional[float]
+    items: Optional[str]
+    status: str
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class IssueCreate(BaseModel):
+    project_id: int
+    title: str
+    description: str
+    severity: str
+    assigned_to: Optional[str] = None
+
+class IssueResponse(BaseModel):
+    id: int
+    project_id: int
+    title: str
+    description: str
+    severity: str
+    status: str
+    assigned_to: Optional[str]
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 # =========================
 # UTILITY FUNCTIONS
@@ -278,20 +194,36 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def create_token(user_id: str, email: str, role: str) -> str:
+def create_token(user_id: int, email: str, role: str) -> str:
     payload = {
         'user_id': user_id,
         'email': email,
         'role': role,
-        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+        'exp': datetime.utcnow() + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def normalize_bool(value: Any) -> bool:
+    """Normalize various checkbox representations to a strict boolean.
+    Accepts True/False, 1/0, 'true'/'false', '1'/'0', 'yes'/'no', 'on'/'off'.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value == 1
+    if isinstance(value, str):
+        v = value.strip().lower()
+        return v in {"true", "1", "yes", "on"}
+    return False
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
     try:
         token = credentials.credentials
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user = await db.users.find_one({"id": payload['user_id']}, {"_id": 0})
+        user = db.query(User).filter(User.id == payload['user_id']).first()
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -300,488 +232,311 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-def serialize_datetime(obj: Any) -> Any:
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    elif isinstance(obj, dict):
-        return {k: serialize_datetime(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [serialize_datetime(item) for item in obj]
-    return obj
-
-def deserialize_datetime(obj: Any) -> Any:
-    if isinstance(obj, str):
-        try:
-            return datetime.fromisoformat(obj)
-        except:
-            return obj
-    elif isinstance(obj, dict):
-        return {k: deserialize_datetime(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [deserialize_datetime(item) for item in obj]
-    return obj
-
 # =========================
 # AUTH ENDPOINTS
 # =========================
 
-@api_router.post("/auth/register", response_model=User)
-async def register(user_data: UserCreate):
+@api_router.post("/auth/register", response_model=UserResponse)
+def register(user_data: UserCreate, db: Session = Depends(get_db)):
     # Check if user exists
-    existing_user = await db.users.find_one({"email": user_data.email})
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
     # Create user
     hashed_pw = hash_password(user_data.password)
-    user_dict = user_data.model_dump(exclude={'password'})
-    user_obj = User(**user_dict)
+    new_user = User(
+        full_name=user_data.full_name,
+        email=user_data.email,
+        password_hash=hashed_pw,
+        role=user_data.role,
+        region=user_data.region
+    )
     
-    doc = user_obj.model_dump()
-    doc['password'] = hashed_pw
-    doc = serialize_datetime(doc)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
     
-    await db.users.insert_one(doc)
-    return user_obj
+    return UserResponse.from_orm(new_user)
 
 @api_router.post("/auth/login")
-async def login(login_data: UserLogin):
-    user = await db.users.find_one({"email": login_data.email}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    if not verify_password(login_data.password, user['password']):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    token = create_token(user['id'], user['email'], user['role'])
-    
-    user_data = deserialize_datetime(user)
-    return {
-        "token": token,
-        "user": User(**user_data).model_dump()
-    }
+def login(login_data: UserLogin, db: Session = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.email == login_data.email).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        if not verify_password(login_data.password, user.password_hash):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        
+        token = create_token(user.id, user.email, user.role)
+        
+        return {
+            "token": token,
+            "user": UserResponse.from_orm(user)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-@api_router.get("/auth/me", response_model=User)
-async def get_me(current_user: dict = Depends(get_current_user)):
-    user_data = deserialize_datetime(current_user)
-    return User(**user_data)
+@api_router.get("/auth/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse.from_orm(current_user)
 
 # =========================
 # PROJECT ENDPOINTS
 # =========================
 
-@api_router.post("/projects", response_model=Project)
-async def create_project(project_data: ProjectCreate, current_user: dict = Depends(get_current_user)):
-    project_dict = project_data.model_dump()
-    project_obj = Project(**project_dict, created_by=current_user['id'])
-    
-    doc = serialize_datetime(project_obj.model_dump())
-    await db.projects.insert_one(doc)
-    
-    # Log activity
-    activity = ActivityLog(
-        user_id=current_user['id'],
-        project_id=project_obj.id,
-        action="Project Created",
-        details={"name": project_obj.name}
-    )
-    await db.activity_logs.insert_one(serialize_datetime(activity.model_dump()))
-    
-    return project_obj
-
-@api_router.get("/projects", response_model=List[Project])
-async def get_projects(current_user: dict = Depends(get_current_user)):
-    projects = await db.projects.find({}, {"_id": 0}).to_list(1000)
-    return [Project(**deserialize_datetime(p)) for p in projects]
-
-@api_router.get("/projects/{project_id}", response_model=Project)
-async def get_project(project_id: str, current_user: dict = Depends(get_current_user)):
-    project = await db.projects.find_one({"id": project_id}, {"_id": 0})
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return Project(**deserialize_datetime(project))
-
-@api_router.put("/projects/{project_id}", response_model=Project)
-async def update_project(project_id: str, project_data: dict, current_user: dict = Depends(get_current_user)):
-    project = await db.projects.find_one({"id": project_id})
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    project_data['updated_at'] = datetime.now(timezone.utc)
-    await db.projects.update_one(
-        {"id": project_id},
-        {"$set": serialize_datetime(project_data)}
+@api_router.post("/projects", response_model=ProjectResponse)
+def create_project(project_data: ProjectCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    new_project = Project(
+        name=project_data.name,
+        client=project_data.client,
+        region=project_data.region,
+        value=project_data.value,
+        status=project_data.status,
+        type=project_data.type,
+        start_date=project_data.start_date,
+        end_date=project_data.end_date,
+        created_by=current_user.id
     )
     
-    updated_project = await db.projects.find_one({"id": project_id}, {"_id": 0})
-    return Project(**deserialize_datetime(updated_project))
+    db.add(new_project)
+    db.commit()
+    db.refresh(new_project)
+    
+    # Automatically create a milestone grid row for the new project
+    try:
+        # Generate a unique project_id for milestone grid (format: TAPL001, TAPL002, etc.)
+        existing_count = db.query(MilestoneGrid).count()
+        milestone_project_id = f"TAPL{str(existing_count + 1).zfill(3)}"
+        
+        # Check if this ID already exists, if so, increment
+        while db.query(MilestoneGrid).filter(MilestoneGrid.project_id == milestone_project_id).first():
+            existing_count += 1
+            milestone_project_id = f"TAPL{str(existing_count + 1).zfill(3)}"
+        
+        new_milestone_row = MilestoneGrid(
+            project_id=milestone_project_id,
+            project_name=new_project.name,
+            branch=new_project.region,
+            priority="Low",
+            progress_pct=0.0,
+            status="Active"
+        )
+        db.add(new_milestone_row)
+        db.commit()
+        db.refresh(new_milestone_row)
+        logging.info(f"Created milestone grid row for project '{new_project.name}' with ID '{milestone_project_id}'")
+    except Exception as e:
+        logging.error(f"Failed to create milestone grid row for project '{new_project.name}': {e}")
+        # Don't fail project creation if milestone grid creation fails
+        # Project is already committed, so we just log the error
+    
+    return ProjectResponse.from_orm(new_project)
 
-@api_router.delete("/projects/{project_id}")
-async def delete_project(project_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.projects.delete_one({"id": project_id})
-    if result.deleted_count == 0:
+@api_router.get("/projects", response_model=List[ProjectResponse])
+def get_projects(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    projects = db.query(Project).all()
+    
+    # Recalculate progress from milestone grid for all projects
+    for project in projects:
+        all_milestones = db.query(MilestoneGrid).filter(
+            func.lower(MilestoneGrid.project_name) == func.lower(project.name)
+        ).all()
+        if all_milestones:
+            avg_progress = sum(m.progress_pct or 0 for m in all_milestones) / len(all_milestones)
+            project.progress = round(avg_progress, 2)
+    
+    db.commit()
+    return [ProjectResponse.from_orm(p) for p in projects]
+
+@api_router.get("/projects/{project_id}", response_model=ProjectResponse)
+def get_project(project_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return {"message": "Project deleted successfully"}
+    
+    # Recalculate progress from milestone grid to ensure it's up-to-date
+    all_milestones = db.query(MilestoneGrid).filter(
+        func.lower(MilestoneGrid.project_name) == func.lower(project.name)
+    ).all()
+    if all_milestones:
+        avg_progress = sum(m.progress_pct or 0 for m in all_milestones) / len(all_milestones)
+        old_progress = project.progress
+        project.progress = round(avg_progress, 2)
+        db.commit()
+        db.refresh(project)
+        logging.info(f"Project '{project.name}': Updated progress from {old_progress}% to {project.progress}% (from {len(all_milestones)} milestone rows)")
+    else:
+        logging.warning(f"Project '{project.name}': No milestone grid rows found matching this project name")
+    
+    return ProjectResponse.from_orm(project)
 
 # =========================
-# MILESTONE ENDPOINTS
+# MILESTONE GRID ENDPOINTS
 # =========================
 
-@api_router.post("/milestones", response_model=Milestone)
-async def create_milestone(milestone_data: MilestoneCreate, current_user: dict = Depends(get_current_user)):
-    milestone_obj = Milestone(**milestone_data.model_dump())
-    doc = serialize_datetime(milestone_obj.model_dump())
-    await db.milestones.insert_one(doc)
-    return milestone_obj
+@api_router.get("/milestones/grid")
+def get_milestones_grid(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get all milestones in grid format"""
+    milestones = db.query(MilestoneGrid).all()
+    return [MilestoneGridResponse.from_orm(m).dict() for m in milestones]
 
-@api_router.get("/milestones", response_model=List[Milestone])
-async def get_milestones(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    milestones = await db.milestones.find(query, {"_id": 0}).to_list(1000)
-    return [Milestone(**deserialize_datetime(m)) for m in milestones]
-
-@api_router.put("/milestones/{milestone_id}", response_model=Milestone)
-async def update_milestone(milestone_id: str, milestone_data: dict, current_user: dict = Depends(get_current_user)):
-    milestone = await db.milestones.find_one({"id": milestone_id})
+@api_router.put("/milestones/grid/{milestone_id}")
+def update_milestone_grid_cell(
+    milestone_id: int,
+    update_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a single cell in the milestone grid and recalculate progress"""
+    milestone = db.query(MilestoneGrid).filter(MilestoneGrid.id == milestone_id).first()
     if not milestone:
         raise HTTPException(status_code=404, detail="Milestone not found")
     
-    await db.milestones.update_one(
-        {"id": milestone_id},
-        {"$set": serialize_datetime(milestone_data)}
-    )
+    field = update_data.get('field')
+    value = update_data.get('value')
     
-    updated_milestone = await db.milestones.find_one({"id": milestone_id}, {"_id": 0})
-    return Milestone(**deserialize_datetime(updated_milestone))
-
-@api_router.delete("/milestones/{milestone_id}")
-async def delete_milestone(milestone_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.milestones.delete_one({"id": milestone_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Milestone not found")
-    return {"message": "Milestone deleted successfully"}
-
-# =========================
-# SCOPE ENDPOINTS
-# =========================
-
-@api_router.post("/scope", response_model=ScopeItem)
-async def create_scope_item(scope_data: ScopeItemCreate, current_user: dict = Depends(get_current_user)):
-    scope_obj = ScopeItem(**scope_data.model_dump())
-    doc = serialize_datetime(scope_obj.model_dump())
-    await db.scope_items.insert_one(doc)
-    return scope_obj
-
-@api_router.get("/scope", response_model=List[ScopeItem])
-async def get_scope_items(project_id: Optional[str] = None, milestone_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {}
-    if project_id:
-        query["project_id"] = project_id
-    if milestone_id:
-        query["milestone_id"] = milestone_id
+    if not field:
+        raise HTTPException(status_code=400, detail="Field is required")
     
-    scope_items = await db.scope_items.find(query, {"_id": 0}).to_list(1000)
-    return [ScopeItem(**deserialize_datetime(s)) for s in scope_items]
-
-@api_router.put("/scope/{scope_id}", response_model=ScopeItem)
-async def update_scope_item(scope_id: str, scope_data: dict, current_user: dict = Depends(get_current_user)):
-    scope = await db.scope_items.find_one({"id": scope_id})
-    if not scope:
-        raise HTTPException(status_code=404, detail="Scope item not found")
+    # Update the field (normalize boolean inputs for checkbox fields)
+    if field.startswith('m'):
+        setattr(milestone, field, normalize_bool(value))
+    else:
+        setattr(milestone, field, value)
+    milestone.updated_at = datetime.utcnow()
     
-    scope_data['last_edited_by'] = current_user['email']
-    scope_data['last_edited_at'] = datetime.now(timezone.utc)
+    # Recalculate progress if milestone field was updated
+    if field.startswith('m'):
+        # Equal-weight across all checkboxes from entry point and milestones 1..10
+        prefixes = ['m_entry_'] + [f"m{i}_" for i in range(1, 11)]
+        keys = [c for c in MilestoneGrid.__table__.columns.keys() if any(c.startswith(p) for p in prefixes)]
+        total = len(keys)
+        completed = sum(1 for k in keys if normalize_bool(getattr(milestone, k)))
+        milestone.progress_pct = round((completed / total * 100) if total > 0 else 0)
     
-    await db.scope_items.update_one(
-        {"id": scope_id},
-        {"$set": serialize_datetime(scope_data)}
-    )
+    # Update project progress based on milestone grid progress (for any milestone-related update)
+    if field.startswith('m') or field == 'progress_pct':
+        # Find project by matching project_name (case-insensitive using func.lower)
+        project = db.query(Project).filter(
+            func.lower(Project.name) == func.lower(milestone.project_name)
+        ).first()
+        if project:
+            # Calculate average progress of all milestone grid rows for this project
+            all_milestones = db.query(MilestoneGrid).filter(
+                func.lower(MilestoneGrid.project_name) == func.lower(project.name)
+            ).all()
+            if all_milestones:
+                avg_progress = sum(m.progress_pct or 0 for m in all_milestones) / len(all_milestones)
+                project.progress = round(avg_progress, 2)
+                logging.info(f"Updated project '{project.name}' progress to {project.progress}% based on {len(all_milestones)} milestone rows")
     
-    updated_scope = await db.scope_items.find_one({"id": scope_id}, {"_id": 0})
-    return ScopeItem(**deserialize_datetime(updated_scope))
-
-@api_router.delete("/scope/{scope_id}")
-async def delete_scope_item(scope_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.scope_items.delete_one({"id": scope_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Scope item not found")
-    return {"message": "Scope item deleted successfully"}
-
-# =========================
-# DESIGN DELIVERABLES ENDPOINTS
-# =========================
-
-@api_router.post("/design-deliverables", response_model=DesignDeliverable)
-async def create_design_deliverable(deliverable_data: DesignDeliverableCreate, current_user: dict = Depends(get_current_user)):
-    deliverable_obj = DesignDeliverable(**deliverable_data.model_dump())
-    doc = serialize_datetime(deliverable_obj.model_dump())
-    await db.design_deliverables.insert_one(doc)
-    return deliverable_obj
-
-@api_router.get("/design-deliverables", response_model=List[DesignDeliverable])
-async def get_design_deliverables(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    deliverables = await db.design_deliverables.find(query, {"_id": 0}).to_list(1000)
-    return [DesignDeliverable(**deserialize_datetime(d)) for d in deliverables]
-
-@api_router.put("/design-deliverables/{deliverable_id}", response_model=DesignDeliverable)
-async def update_design_deliverable(deliverable_id: str, deliverable_data: dict, current_user: dict = Depends(get_current_user)):
-    deliverable = await db.design_deliverables.find_one({"id": deliverable_id})
-    if not deliverable:
-        raise HTTPException(status_code=404, detail="Design deliverable not found")
+    db.commit()
+    db.refresh(milestone)
     
-    await db.design_deliverables.update_one(
-        {"id": deliverable_id},
-        {"$set": serialize_datetime(deliverable_data)}
-    )
-    
-    updated_deliverable = await db.design_deliverables.find_one({"id": deliverable_id}, {"_id": 0})
-    return DesignDeliverable(**deserialize_datetime(updated_deliverable))
+    return MilestoneGridResponse.from_orm(milestone).dict()
 
-# =========================
-# MATERIAL REQUEST ENDPOINTS
-# =========================
-
-@api_router.post("/material-requests", response_model=MaterialRequest)
-async def create_material_request(mr_data: MaterialRequestCreate, current_user: dict = Depends(get_current_user)):
-    # Generate MR number
-    count = await db.material_requests.count_documents({})
-    mr_number = f"MR{count + 1:05d}"
-    
-    mr_obj = MaterialRequest(**mr_data.model_dump(), mr_number=mr_number, created_by=current_user['id'], status="Pending")
-    doc = serialize_datetime(mr_obj.model_dump())
-    await db.material_requests.insert_one(doc)
-    return mr_obj
-
-@api_router.get("/material-requests", response_model=List[MaterialRequest])
-async def get_material_requests(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    requests = await db.material_requests.find(query, {"_id": 0}).to_list(1000)
-    return [MaterialRequest(**deserialize_datetime(r)) for r in requests]
-
-@api_router.put("/material-requests/{mr_id}", response_model=MaterialRequest)
-async def update_material_request(mr_id: str, mr_data: dict, current_user: dict = Depends(get_current_user)):
-    mr = await db.material_requests.find_one({"id": mr_id})
-    if not mr:
-        raise HTTPException(status_code=404, detail="Material request not found")
-    
-    await db.material_requests.update_one(
-        {"id": mr_id},
-        {"$set": serialize_datetime(mr_data)}
-    )
-    
-    updated_mr = await db.material_requests.find_one({"id": mr_id}, {"_id": 0})
-    return MaterialRequest(**deserialize_datetime(updated_mr))
-
-# =========================
-# PURCHASE ORDER ENDPOINTS
-# =========================
-
-@api_router.post("/purchase-orders", response_model=PurchaseOrder)
-async def create_purchase_order(po_data: PurchaseOrderCreate, current_user: dict = Depends(get_current_user)):
-    # Generate PO number
-    count = await db.purchase_orders.count_documents({})
-    po_number = f"PO{count + 1:05d}"
-    
-    po_obj = PurchaseOrder(**po_data.model_dump(), po_number=po_number, status="Pending")
-    doc = serialize_datetime(po_obj.model_dump())
-    await db.purchase_orders.insert_one(doc)
-    return po_obj
-
-@api_router.get("/purchase-orders", response_model=List[PurchaseOrder])
-async def get_purchase_orders(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    pos = await db.purchase_orders.find(query, {"_id": 0}).to_list(1000)
-    return [PurchaseOrder(**deserialize_datetime(p)) for p in pos]
-
-@api_router.put("/purchase-orders/{po_id}", response_model=PurchaseOrder)
-async def update_purchase_order(po_id: str, po_data: dict, current_user: dict = Depends(get_current_user)):
-    po = await db.purchase_orders.find_one({"id": po_id})
-    if not po:
-        raise HTTPException(status_code=404, detail="Purchase order not found")
-    
-    await db.purchase_orders.update_one(
-        {"id": po_id},
-        {"$set": serialize_datetime(po_data)}
-    )
-    
-    updated_po = await db.purchase_orders.find_one({"id": po_id}, {"_id": 0})
-    return PurchaseOrder(**deserialize_datetime(updated_po))
-
-# =========================
-# ISSUE ENDPOINTS
-# =========================
-
-@api_router.post("/issues", response_model=Issue)
-async def create_issue(issue_data: IssueCreate, current_user: dict = Depends(get_current_user)):
-    issue_obj = Issue(**issue_data.model_dump(), created_by=current_user['id'], status="Open")
-    doc = serialize_datetime(issue_obj.model_dump())
-    await db.issues.insert_one(doc)
-    return issue_obj
-
-@api_router.get("/issues", response_model=List[Issue])
-async def get_issues(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    issues = await db.issues.find(query, {"_id": 0}).to_list(1000)
-    return [Issue(**deserialize_datetime(i)) for i in issues]
-
-@api_router.put("/issues/{issue_id}", response_model=Issue)
-async def update_issue(issue_id: str, issue_data: dict, current_user: dict = Depends(get_current_user)):
-    issue = await db.issues.find_one({"id": issue_id})
-    if not issue:
-        raise HTTPException(status_code=404, detail="Issue not found")
-    
-    issue_data['updated_at'] = datetime.now(timezone.utc)
-    await db.issues.update_one(
-        {"id": issue_id},
-        {"$set": serialize_datetime(issue_data)}
-    )
-    
-    updated_issue = await db.issues.find_one({"id": issue_id}, {"_id": 0})
-    return Issue(**deserialize_datetime(updated_issue))
-
-# =========================
-# TIMESHEET ENDPOINTS
-# =========================
-
-@api_router.post("/timesheets", response_model=Timesheet)
-async def create_timesheet(timesheet_data: TimesheetCreate, current_user: dict = Depends(get_current_user)):
-    timesheet_obj = Timesheet(**timesheet_data.model_dump(), user_id=current_user['id'], status="Draft")
-    doc = serialize_datetime(timesheet_obj.model_dump())
-    await db.timesheets.insert_one(doc)
-    return timesheet_obj
-
-@api_router.get("/timesheets", response_model=List[Timesheet])
-async def get_timesheets(project_id: Optional[str] = None, user_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {}
-    if project_id:
-        query["project_id"] = project_id
-    if user_id:
-        query["user_id"] = user_id
-    elif current_user['role'] not in ['Admin', 'PM']:
-        query["user_id"] = current_user['id']
-    
-    timesheets = await db.timesheets.find(query, {"_id": 0}).to_list(1000)
-    return [Timesheet(**deserialize_datetime(t)) for t in timesheets]
-
-@api_router.put("/timesheets/{timesheet_id}", response_model=Timesheet)
-async def update_timesheet(timesheet_id: str, timesheet_data: dict, current_user: dict = Depends(get_current_user)):
-    timesheet = await db.timesheets.find_one({"id": timesheet_id})
-    if not timesheet:
-        raise HTTPException(status_code=404, detail="Timesheet not found")
-    
-    await db.timesheets.update_one(
-        {"id": timesheet_id},
-        {"$set": serialize_datetime(timesheet_data)}
-    )
-    
-    updated_timesheet = await db.timesheets.find_one({"id": timesheet_id}, {"_id": 0})
-    return Timesheet(**deserialize_datetime(updated_timesheet))
-
-# =========================
-# DOCUMENT ENDPOINTS
-# =========================
-
-@api_router.post("/documents/upload")
-async def upload_document(
-    file: UploadFile = File(...),
-    project_id: str = Form(...),
-    doc_type: str = Form(...),
-    current_user: dict = Depends(get_current_user)
+@api_router.post("/milestones/grid")
+def create_milestone_grid(
+    milestone_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    # For MVP, we'll store files locally instead of S3
-    # This can be easily swapped to S3 later
-    upload_dir = Path("/app/uploads")
-    upload_dir.mkdir(exist_ok=True)
+    """Create a new milestone grid row"""
+    new_milestone = MilestoneGrid(**milestone_data)
+    db.add(new_milestone)
+    db.commit()
+    db.refresh(new_milestone)
     
-    file_path = upload_dir / f"{uuid.uuid4()}_{file.filename}"
-    
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-    
-    # Create document record
-    doc_obj = Document(
-        project_id=project_id,
-        type=doc_type,
-        name=file.filename,
-        url=str(file_path),
-        uploaded_by=current_user['id']
-    )
-    
-    await db.documents.insert_one(serialize_datetime(doc_obj.model_dump()))
-    
-    return {
-        "id": doc_obj.id,
-        "url": f"/api/documents/download/{doc_obj.id}",
-        "name": file.filename
-    }
+    return MilestoneGridResponse.from_orm(new_milestone).dict()
 
-@api_router.get("/documents", response_model=List[Document])
-async def get_documents(project_id: Optional[str] = None, doc_type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {}
-    if project_id:
-        query["project_id"] = project_id
-    if doc_type:
-        query["type"] = doc_type
-    
-    documents = await db.documents.find(query, {"_id": 0}).to_list(1000)
-    return [Document(**deserialize_datetime(d)) for d in documents]
+@api_router.delete("/milestones/grid/{milestone_id}")
+def delete_milestone_grid_row(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        row = db.query(MilestoneGrid).filter(MilestoneGrid.id == milestone_id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Milestone not found")
+        db.delete(row)
+        db.commit()
+        return {"status": "deleted", "id": milestone_id}
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Error deleting milestone grid row {milestone_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete row: {str(e)}")
 
 # =========================
-# NOTIFICATION ENDPOINTS
+# SIMPLE MILESTONES AND SCOPE LISTING (for Project Workspace)
 # =========================
 
-@api_router.get("/notifications", response_model=List[Notification])
-async def get_notifications(current_user: dict = Depends(get_current_user)):
-    notifications = await db.notifications.find(
-        {"user_id": current_user['id']},
-        {"_id": 0}
-    ).sort("created_at", -1).limit(10).to_list(10)
-    return [Notification(**deserialize_datetime(n)) for n in notifications]
+@api_router.get("/milestones")
+def list_milestones(project_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    query = db.query(MilestoneModel)
+    if project_id is not None:
+        query = query.filter(MilestoneModel.project_id == project_id)
+    items = query.all()
+    # Shape minimal response used by UI
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "start_date": m.start_date,
+            "end_date": m.end_date,
+            "status": m.status,
+            "progress": m.progress,
+        }
+        for m in items
+    ]
 
-@api_router.put("/notifications/mark-read")
-async def mark_notifications_read(current_user: dict = Depends(get_current_user)):
-    await db.notifications.update_many(
-        {"user_id": current_user['id'], "read": False},
-        {"$set": {"read": True}}
-    )
-    return {"message": "All notifications marked as read"}
+@api_router.get("/scope")
+def list_scope_items(project_id: Optional[int] = None, milestone_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    query = db.query(ScopeItemModel)
+    if project_id is not None:
+        query = query.filter(ScopeItemModel.project_id == project_id)
+    if milestone_id is not None:
+        query = query.filter(ScopeItemModel.milestone_id == milestone_id)
+    items = query.all()
+    return [
+        {
+            "id": s.id,
+            "sl_no": s.sl_no,
+            "description": s.description,
+            "type": s.type,
+            "status": s.status,
+            "progress": s.progress,
+            "remarks": s.remarks,
+        }
+        for s in items
+    ]
 
 # =========================
-# ACTIVITY LOG ENDPOINTS
-# =========================
-
-@api_router.get("/activity-logs", response_model=List[ActivityLog])
-async def get_activity_logs(project_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {"project_id": project_id} if project_id else {}
-    logs = await db.activity_logs.find(query, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
-    return [ActivityLog(**deserialize_datetime(log)) for log in logs]
-
-# =========================
-# DASHBOARD / STATS ENDPOINTS
+# DASHBOARD ENDPOINTS
 # =========================
 
 @api_router.get("/dashboard/stats")
-async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
-    # Count projects by status
-    total_projects = await db.projects.count_documents({})
-    active_projects = await db.projects.count_documents({"status": "Active"})
-    completed_projects = await db.projects.count_documents({"status": "Completed"})
-    at_risk_projects = await db.projects.count_documents({"status": "At-Risk"})
+def get_dashboard_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    total_projects = db.query(Project).count()
+    active_projects = db.query(Project).filter(Project.status == "Active").count()
+    completed_projects = db.query(Project).filter(Project.status == "Completed").count()
+    at_risk_projects = db.query(Project).filter(Project.status == "At-Risk").count()
     
     # Get projects by region
+    all_projects = db.query(Project).all()
     projects_by_region = {}
-    all_projects = await db.projects.find({}, {"_id": 0, "region": 1}).to_list(1000)
+    projects_by_status = {}
+    
     for p in all_projects:
-        region = p.get('region', 'Unknown')
+        region = p.region or 'Unknown'
         projects_by_region[region] = projects_by_region.get(region, 0) + 1
     
-    # Get projects by status for donut chart
-    projects_by_status = {}
-    all_projects = await db.projects.find({}, {"_id": 0, "status": 1}).to_list(1000)
-    for p in all_projects:
-        status = p.get('status', 'Unknown')
+        status = p.status or 'Unknown'
         projects_by_status[status] = projects_by_status.get(status, 0) + 1
     
     return {
@@ -795,16 +550,380 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         "projects_by_status": projects_by_status
     }
 
+# =========================
+# PROJECT SUMMARY (for Dashboard)
+# =========================
+
+@api_router.get("/projects/summary")
+def get_projects_summary(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    total_projects = db.query(Project).count()
+    active_projects = db.query(Project).filter(Project.status == "Active").count()
+    completed_projects = db.query(Project).filter(Project.status == "Completed").count()
+    at_risk_projects = db.query(Project).filter(Project.status == "At-Risk").count()
+    on_hold_projects = db.query(Project).filter(Project.status == "On-Hold").count()
+
+    # Financials
+    all_projects = db.query(Project).all()
+    total_value = sum(p.value or 0 for p in all_projects)
+    active_value = sum((p.value or 0) for p in all_projects if p.status == "Active")
+    completed_value = sum((p.value or 0) for p in all_projects if p.status == "Completed")
+
+    # By region
+    projects_by_region: Dict[str, int] = {}
+    for p in all_projects:
+        region = p.region or "Bengaluru"
+        projects_by_region[region] = projects_by_region.get(region, 0) + 1
+
+    return {
+        "total_projects": total_projects,
+        "active_projects": active_projects,
+        "completed_projects": completed_projects,
+        "at_risk_projects": at_risk_projects,
+        "on_hold_projects": on_hold_projects,
+        "financial_summary": {
+            "total_value": total_value,
+            "active_value": active_value,
+            "completed_value": completed_value,
+        },
+        "projects_by_region": projects_by_region,
+    }
+
+@api_router.get("/activity-logs")
+def get_activity_logs(project_id: Optional[int] = None, limit: int = 20, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    query = db.query(ActivityLog)
+    if project_id is not None:
+        query = query.filter(ActivityLog.project_id == project_id)
+    logs = query.order_by(ActivityLog.created_at.desc()).limit(limit).all()
+    return [
+        {
+            "id": l.id,
+            "project_id": l.project_id,
+            "user_id": l.user_id,
+            "action": l.action,
+            "details": l.details,
+            "created_at": l.created_at.isoformat()
+        }
+        for l in logs
+    ]
+
+@api_router.get("/notifications")
+def get_notifications(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    notifications = (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        {
+            "id": n.id,
+            "message": n.message,
+            "link": n.link,
+            "read": n.read,
+            "created_at": n.created_at.isoformat(),
+        }
+        for n in notifications
+    ]
+
+@api_router.put("/notifications/mark-read")
+def mark_notifications_read(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(Notification).filter(
+        Notification.user_id == current_user.id, Notification.read == False
+    ).update({Notification.read: True})
+    db.commit()
+    return {"message": "All notifications marked as read"}
+
+# =========================
+# TASKS (lightweight via notifications)
+# =========================
+
+@api_router.post("/tasks")
+def create_task(
+    task: TaskCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a simple task by sending a notification to an assignee.
+    This leverages the existing Notification table and shows up in the UI popups.
+    """
+    if not task.assignee_id and not task.assignee_email:
+        raise HTTPException(status_code=400, detail="Assignee id or email is required")
+
+    assignee = None
+    if task.assignee_id:
+        assignee = db.query(User).filter(User.id == task.assignee_id).first()
+    elif task.assignee_email:
+        assignee = db.query(User).filter(User.email == task.assignee_email).first()
+    if not assignee and task.assignee_email and task.assignee_email == current_user.email:
+        assignee = current_user
+    if not assignee:
+        raise HTTPException(status_code=404, detail="Assignee not found. Invite or register the user first, or assign to yourself.")
+
+    notif = Notification(
+        user_id=assignee.id,
+        message=f"Task from {current_user.full_name}: {task.message}",
+        link=task.link or "/tasks",
+        read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.add(notif)
+    # Optional activity log
+    log = ActivityLog(
+        project_id=None,
+        user_id=current_user.id,
+        action="assign_task",
+        details=f"Assigned task to {assignee.email}: {task.message}",
+        created_at=datetime.utcnow(),
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(notif)
+    return {
+        "id": notif.id,
+        "message": notif.message,
+        "link": notif.link,
+        "read": notif.read,
+        "created_at": notif.created_at.isoformat(),
+        "assignee_id": assignee.id,
+    }
+
+@api_router.get("/tasks/assigned-by-me")
+def get_tasks_assigned_by_me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Return tasks the current user assigned (based on activity logs)."""
+    logs = (
+        db.query(ActivityLog)
+        .filter(ActivityLog.user_id == current_user.id, ActivityLog.action == "assign_task")
+        .order_by(ActivityLog.created_at.desc())
+        .all()
+    )
+    results = []
+    for l in logs:
+        results.append({
+            "id": l.id,
+            "message": l.details,
+            "created_at": l.created_at.isoformat(),
+        })
+    return results
+
+# =========================
+# MATERIAL REQUESTS
+# =========================
+
+@api_router.get("/material-requests", response_model=List[MaterialRequestResponse])
+def list_material_requests(project_id: Optional[int] = None, mine: Optional[bool] = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # project_id not used yet as schema doesn't link requests to projects; reserved for future
+    query = db.query(MaterialRequest)
+    if mine:
+        query = query.filter(MaterialRequest.requested_by == current_user.id)
+    requests = query.order_by(MaterialRequest.created_at.desc()).all()
+    return [MaterialRequestResponse.from_orm(r) for r in requests]
+
+@api_router.post("/material-requests", response_model=MaterialRequestResponse)
+def create_material_request(req: MaterialRequestCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    mr = MaterialRequest(
+        title=req.title,
+        items=req.items,
+        needed_by=req.needed_by,
+        status=req.status or "Pending",
+        assignee_email=req.assignee_email,
+        requested_by=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(mr)
+    db.commit()
+    db.refresh(mr)
+    # Optional notification to assignee if user exists
+    if req.assignee_email:
+        assignee = db.query(User).filter(User.email == req.assignee_email).first()
+        if assignee:
+            notif = Notification(
+                user_id=assignee.id,
+                message=f"Material Request from {current_user.full_name}: {req.title}",
+                link="/materials",
+                read=False,
+                created_at=datetime.utcnow(),
+            )
+            db.add(notif)
+            db.commit()
+    return MaterialRequestResponse.from_orm(mr)
+
+@api_router.put("/material-requests/{request_id}", response_model=MaterialRequestResponse)
+def update_material_request(request_id: int, data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    mr = db.query(MaterialRequest).filter(MaterialRequest.id == request_id).first()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Material Request not found")
+    # Update allowed fields
+    for key in ["title", "items", "needed_by", "status"]:
+        if key in data:
+            setattr(mr, key, data[key])
+    mr.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(mr)
+    return MaterialRequestResponse.from_orm(mr)
+
+# =========================
+# PURCHASE ORDERS
+# =========================
+
+@api_router.get("/purchase-orders", response_model=List[PurchaseOrderResponse])
+def list_purchase_orders(mine: Optional[bool] = False, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    query = db.query(PurchaseOrder)
+    if mine:
+        query = query.filter(PurchaseOrder.created_by == current_user.id)
+    orders = query.order_by(PurchaseOrder.created_at.desc()).all()
+    return [PurchaseOrderResponse.from_orm(p) for p in orders]
+
+@api_router.post("/purchase-orders", response_model=PurchaseOrderResponse)
+def create_purchase_order(po: PurchaseOrderCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    order = PurchaseOrder(
+        title=po.title,
+        vendor=po.vendor,
+        amount=po.amount,
+        items=po.items,
+        status=po.status or "Draft",
+        created_by=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    return PurchaseOrderResponse.from_orm(order)
+
+# =========================
+# ISSUES
+# =========================
+
+@api_router.get("/issues", response_model=List[IssueResponse])
+def list_issues(project_id: Optional[int] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    query = db.query(Issue)
+    if project_id is not None:
+        query = query.filter(Issue.project_id == project_id)
+    issues = query.order_by(Issue.created_at.desc()).all()
+    return [IssueResponse.from_orm(i) for i in issues]
+
+@api_router.post("/issues", response_model=IssueResponse)
+def create_issue(issue_data: IssueCreate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    issue = Issue(
+        project_id=issue_data.project_id,
+        title=issue_data.title,
+        description=issue_data.description,
+        severity=issue_data.severity,
+        assigned_to=issue_data.assigned_to,
+        status="Open",
+        created_by=current_user.id,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(issue)
+    db.commit()
+    db.refresh(issue)
+    return IssueResponse.from_orm(issue)
+
+# =========================
+# DESIGN DELIVERABLES
+# =========================
+
+class DesignDeliverableResponse(BaseModel):
+    id: int
+    project_id: int
+    type: str
+    name: str
+    url: str
+    version: int
+    uploaded_by: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+@api_router.get("/design-deliverables", response_model=List[DesignDeliverableResponse])
+def list_design_deliverables(project_id: Optional[int] = None, type: Optional[str] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        query = db.query(DesignDeliverable)
+        if project_id is not None:
+            query = query.filter(DesignDeliverable.project_id == project_id)
+        if type is not None:
+            query = query.filter(DesignDeliverable.type == type)
+        deliverables = query.order_by(DesignDeliverable.created_at.desc()).all()
+        return [DesignDeliverableResponse.from_orm(d) for d in deliverables]
+    except Exception as e:
+        logging.error(f"Error fetching design deliverables: {e}")
+        return []
+
+@api_router.post("/design-deliverables/upload")
+async def upload_design_deliverable(
+    file: UploadFile = File(...),
+    project_id: str = Form(...),
+    deliverable_type: str = Form(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        project_id_int = int(project_id)
+        import os
+        import uuid
+        from pathlib import Path
+        
+        upload_dir = Path("uploads/design-deliverables")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="File name is required")
+        
+        file_extension = Path(file.filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = upload_dir / unique_filename
+        
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # Store a web-friendly relative URL so frontend can open via /uploads
+        saved_url = f"uploads/design-deliverables/{unique_filename}"
+        deliverable = DesignDeliverable(
+            project_id=project_id_int,
+            type=deliverable_type,
+            name=file.filename,
+            url=saved_url,
+            version=1,
+            uploaded_by=current_user.id,
+            created_at=datetime.utcnow()
+        )
+        db.add(deliverable)
+        db.commit()
+        db.refresh(deliverable)
+        return DesignDeliverableResponse.from_orm(deliverable)
+    except Exception as e:
+        logging.error(f"Error uploading design deliverable: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to upload design deliverable: {str(e)}")
+
+# Download a design deliverable file by id
+@api_router.get("/design-deliverables/{deliverable_id}/download")
+def download_design_deliverable(deliverable_id: int, db: Session = Depends(get_db)):
+    deliverable = db.query(DesignDeliverable).filter(DesignDeliverable.id == deliverable_id).first()
+    if not deliverable:
+        raise HTTPException(status_code=404, detail="Design deliverable not found")
+    import os
+    # Resolve stored URL (relative under uploads or absolute)
+    stored = deliverable.url
+    if os.path.isabs(stored):
+        file_path = stored
+    else:
+        file_path = os.path.abspath(os.path.join(os.getcwd(), stored))
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    filename = deliverable.name or os.path.basename(file_path)
+    return FileResponse(path=file_path, filename=filename)
+
 # Include the router in the main app
 app.include_router(api_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Configure logging
 logging.basicConfig(
@@ -813,6 +932,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting Tanti Project Management API...")
+    logger.info("Database: SQLite (tanti.db)")
+    # Lightweight migration: ensure new columns exist
+    try:
+        with engine.begin() as conn:
+            cols = conn.execute(text("PRAGMA table_info(material_requests)")).fetchall()
+            names = {c[1] for c in cols}
+            if "assignee_email" not in names:
+                conn.execute(text("ALTER TABLE material_requests ADD COLUMN assignee_email VARCHAR NULL"))
+                logger.info("Added column material_requests.assignee_email")
+    except Exception as e:
+        logger.warning(f"Startup migration skipped or failed: {e}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8010)
+

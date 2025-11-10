@@ -75,3 +75,100 @@ img {
   max-width: 100%;
   height: auto;
 }
+
+/* Milestones header colors */
+.header-orange .ag-header-group-cell-label {
+  background: #f59e0b;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.header-blue .ag-header-cell-label {
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* AG Grid horizontal scrollbar full stretch */
+.ag-body-horizontal-scroll {
+  width: 100% !important;
+  right: 0 !important;
+}
+
+/* Remove right-side clipping line so last column is fully visible */
+.ag-root,
+.ag-root-wrapper,
+.ag-root-wrapper-body {
+  border-right: 0 !important;
+}
+
+/* Remove any divider visual for spacer */
+.no-divider {
+  border-right: 0 !important;
+}
+
+/* Allow header text wrapping for specific columns */
+.wrap-header .ag-header-cell-text {
+  white-space: normal !important;
+  line-height: 1.2;
+}
+
+.no-wrap-header .ag-header-cell-text {
+  white-space: nowrap !important;
+}
+
+/* Stronger blue header styling for sub-columns */
+.header-blue .ag-header-cell-text {
+  color: #0b1b37 !important;
+}
+.header-blue .ag-header-cell-label {
+  background-color: #60a5fa !important; /* blue-400 */
+  color: #ffffff !important;
+  padding: 8px 12px; /* larger padding for taller/wider pill */
+  min-height: 40px; /* increase height */
+  border-radius: 8px;
+}
+
+/* Prevent awkward word breaks in wrapped headers */
+.wrap-header .ag-header-cell-text {
+  word-break: keep-all;
+}
+
+/* Ensure no invisible right spacer shortens the scrollable width */
+.ag-horizontal-right-spacer,
+.ag-horizontal-left-spacer {
+  width: 0 !important;
+  min-width: 0 !important;
+  display: none !important;
+}
+
+/* Let center viewport show full width and content decide min width */
+.ag-center-cols-viewport {
+  overflow-x: visible !important;
+}
+.ag-center-cols-container {
+  min-width: max-content !important;
+}
+
+/* Ensure clipper does not crop last columns */
+.ag-center-cols-clipper {
+  min-width: max-content !important;
+}
+
+/* Make the main body viewport provide the horizontal scrollbar */
+.ag-body-viewport {
+  overflow-x: auto !important;
+  overflow-y: auto;
+}
+.ag-body-horizontal-scroll-viewport {
+  width: 100% !important;
+}
+
+/* Make AG Grid columns more compact globally */
+.ag-theme-alpine {
+  --ag-font-size: 12px;
+  --ag-cell-horizontal-padding: 4px;
+  --ag-header-foreground-color: #0f172a;
+  --ag-header-height: 32px;
+}

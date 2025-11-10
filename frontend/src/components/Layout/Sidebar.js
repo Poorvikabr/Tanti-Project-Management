@@ -7,7 +7,7 @@ const navItems = [
   { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/projects', icon: FolderKanban, label: 'Projects' },
   { path: '/milestones', icon: Target, label: 'Milestones' },
-  { path: '/scope', icon: FileText, label: 'Scope of Work' },
+  { path: '/tasks', icon: FileText, label: 'Task' },
   { path: '/design', icon: Palette, label: 'Design Deliverables' },
   { path: '/materials', icon: ShoppingCart, label: 'Material Requests / POs' },
   { path: '/issues', icon: AlertCircle, label: 'Issues & SLA' },

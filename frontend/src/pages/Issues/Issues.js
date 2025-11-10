@@ -12,14 +12,14 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-export const Issues = () => {
+export const Issues = ({ projectId }) => {
   const { user } = useAuth();
   const [issues, setIssues] = useState([]);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [formData, setFormData] = useState({
-    project_id: '',
+    project_id: projectId ? String(projectId) : '',
     title: '',
     description: '',
     severity: 'Med',
@@ -28,16 +28,16 @@ export const Issues = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [projectId]);
 
   const fetchData = async () => {
     try {
       const [issuesRes, projectsRes] = await Promise.all([
-        api.getIssues(),
+        api.getIssues(projectId),
         api.getProjects()
       ]);
-      setIssues(issuesRes.data);
-      setProjects(projectsRes.data);
+      setIssues((issuesRes.data || []));
+      setProjects((projectsRes.data || []));
     } catch (error) {
       console.error('Failed to fetch data:', error);
       toast.error('Failed to load issues');
@@ -49,7 +49,11 @@ export const Issues = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.createIssue(formData);
+      const payload = {
+        ...formData,
+        project_id: parseInt(formData.project_id)
+      };
+      await api.createIssue(payload);
       toast.success('Issue created successfully!');
       setDialogOpen(false);
       fetchData();
@@ -120,9 +124,13 @@ export const Issues = () => {
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map((project) => (
-                      <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
-                    ))}
+                    {projects.length === 0 ? (
+                      <SelectItem value="none" disabled>No projects available</SelectItem>
+                    ) : (
+                      projects.map((project) => (
+                        <SelectItem key={project.id} value={String(project.id)}>{project.name}</SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
